@@ -1,9 +1,9 @@
 name: Build iOS Simulator app (Expo)
-description: Runs Expo prebuild for iOS, CocoaPods, and xcodebuild to produce a Debug Simulator .app bundle.
+description: Runs Expo prebuild for iOS, CocoaPods, and xcodebuild to produce a Release Simulator .app bundle.
 
 outputs:
   app_path:
-    description: Absolute path to the built .app bundle (Debug, iphonesimulator).
+    description: Absolute path to the built .app bundle (Release, iphonesimulator).
     value: ${{ steps.resolve.outputs.app_path }}
 
 runs:
@@ -45,7 +45,7 @@ runs:
         xcodebuild \
           -workspace ios/testerarmy.xcworkspace \
           -scheme testerarmy \
-          -configuration Debug \
+          -configuration Release \
           -sdk iphonesimulator \
           -destination 'generic/platform=iOS Simulator' \
           -derivedDataPath ios/build \
@@ -58,7 +58,7 @@ runs:
       shell: bash
       run: |
         set -euo pipefail
-        PRODUCTS="$GITHUB_WORKSPACE/ios/build/Build/Products/Debug-iphonesimulator"
+        PRODUCTS="$GITHUB_WORKSPACE/ios/build/Build/Products/Release-iphonesimulator"
         APP_PATH="$(find "$PRODUCTS" -maxdepth 1 -type d -name '*.app' | head -1)"
         if [[ -z "${APP_PATH:-}" || ! -d "$APP_PATH" ]]; then
           echo "Could not find a .app under $PRODUCTS"
