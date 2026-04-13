@@ -8,22 +8,45 @@ on:
   pull_request:
 
 jobs:
-  test-mobile:
+  build:
+    name: Build iOS Simulator app
     runs-on: macos-latest
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Build iOS Simulator app
         id: build
         uses: ./.github/actions/build-ios-simulator-app
 
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: testerarmy-simulator-app
+          path: ${{ steps.build.outputs.app_path }}
+          retention-days: 1
+
+  test:
+    name: Run TesterArmy tests
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download .app artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: testerarmy-simulator-app
+          path: app
+
       - name: Upload app and run TesterArmy tests
         id: mobile
         uses: ./.github/actions/testerarmy-mobile-ci
         with:
-          app_path: ${{ steps.build.outputs.app_path }}
+          app_path: app/testerarmy.app
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
           project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
           webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
