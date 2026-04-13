@@ -110,6 +110,30 @@ function classifyRun(status: string, result: string): RunState {
   return "pending";
 }
 
+function stateIcon(state: RunState): string {
+  switch (state) {
+    case "passed":
+      return "\u2705";
+    case "failed":
+      return "\u274C";
+    case "pending":
+      return "\u23F3";
+  }
+}
+
+function overallBadge(status: string): string {
+  switch (status) {
+    case "passed":
+      return "\u2705 Passed";
+    case "failed":
+      return "\u274C Failed";
+    case "running":
+      return "\u23F3 Running";
+    default:
+      return `\u26A0\uFE0F ${status}`;
+  }
+}
+
 function buildSummary(
   resolvedMobileAppId: string,
   overallStatus: string,
@@ -124,66 +148,70 @@ function buildSummary(
   );
 
   const lines: string[] = [
-    "## TesterArmy Results",
+    `# ${overallBadge(overallStatus)}`,
     "",
-    `**Overall:** \`${overallStatus}\`  `,
   ];
 
+  const metaParts = [
+    `**Runs:** ${runs.length} total \u2014 ${counts.passed} passed, ${counts.failed} failed, ${counts.pending} pending`,
+  ];
   if (resolvedMobileAppId) {
-    lines.push(`**Resolved Mobile App ID:** \`${resolvedMobileAppId}\`  `);
+    metaParts.push(`**App ID:** \`${resolvedMobileAppId}\``);
   }
+  lines.push(metaParts.join(" &nbsp;|&nbsp; "), "");
 
   lines.push(
-    `**Runs:** \`${runs.length}\` total, \`${counts.passed}\` passed, \`${counts.failed}\` failed, \`${counts.pending}\` pending`,
-    "",
-    "| Test | Status | Result | Duration | Issues |",
-    "| --- | --- | --- | --- | --- |",
+    "| &nbsp; | Test | Status | Duration | Issues |",
+    "| :---: | --- | :---: | ---: | ---: |",
   );
 
   for (const run of runs) {
     lines.push(
-      `| ${sanitizeForTable(run.featureName)} | \`${run.status}\` | \`${run.result}\` | ${sanitizeForTable(run.duration)} | ${run.issues.length} |`,
+      `| ${stateIcon(run.state)} | ${sanitizeForTable(run.featureName)} | \`${run.result}\` | ${sanitizeForTable(run.duration)} | ${run.issues.length} |`,
     );
   }
 
+  lines.push("", "---", "");
+
   for (const run of runs) {
-    lines.push("");
     lines.push("<details>");
     lines.push(
-      `<summary><strong>${sanitizeForTable(run.featureName)}</strong> - ${run.result}</summary>`,
+      `<summary>${stateIcon(run.state)} <strong>${sanitizeForTable(run.featureName)}</strong> &mdash; <code>${run.result}</code> in ${sanitizeForTable(run.duration)}</summary>`,
     );
     lines.push("");
-    lines.push(`Run ID: \`${run.id}\`  `);
-    lines.push(`Status: \`${run.status}\`  `);
-    lines.push(`Result: \`${run.result}\`  `);
-    lines.push(`Duration: \`${run.duration}\`  `);
-    lines.push(`Issues: \`${run.issues.length}\``);
+    lines.push(`| | |`);
+    lines.push(`| --- | --- |`);
+    lines.push(`| **Status** | \`${run.status}\` |`);
+    lines.push(`| **Result** | \`${run.result}\` |`);
+    lines.push(`| **Duration** | ${run.duration} |`);
+    lines.push(`| **Issues** | ${run.issues.length} |`);
     lines.push("");
 
     if (run.description) {
-      lines.push(run.description, "");
+      lines.push(`> ${run.description.replace(/\n/g, "\n> ")}`, "");
     }
 
     if (run.issues.length > 0) {
-      lines.push("**Issues**", "");
+      lines.push("#### Issues", "");
       for (const issue of run.issues) {
-        lines.push(`- ${issueText(issue)}`);
+        lines.push(`> \u26A0\uFE0F ${issueText(issue)}`, "");
       }
-      lines.push("");
     }
 
     const urls = run.screenshots
       .map((item) => screenshotUrl(item))
       .filter(Boolean) as string[];
     if (urls.length > 0) {
-      lines.push("**Screenshots**", "");
+      lines.push("#### Screenshots", "");
       urls.forEach((url, index) => {
-        lines.push(`- [Screenshot ${index + 1}](${url})`);
+        lines.push(
+          `<a href="${url}"><img src="${url}" alt="Screenshot ${index + 1}" width="400"></a>`,
+          "",
+        );
       });
-      lines.push("");
     }
 
-    lines.push("</details>");
+    lines.push("</details>", "");
   }
 
   return lines.join("\n");
