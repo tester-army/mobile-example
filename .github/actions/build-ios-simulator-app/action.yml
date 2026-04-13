@@ -25,6 +25,15 @@ runs:
         CI: "true"
       run: npx expo prebuild --platform ios --no-install
 
+    - name: Restore CocoaPods cache
+      id: pods-cache
+      uses: actions/cache@v4
+      with:
+        path: ios/Pods
+        key: pods-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}
+        restore-keys: |
+          pods-${{ runner.os }}-
+
     - name: CocoaPods install
       shell: bash
       working-directory: ios
@@ -38,6 +47,15 @@ runs:
           brew install xcbeautify
         fi
 
+    - name: Restore xcodebuild derived data cache
+      uses: actions/cache@v4
+      with:
+        path: ios/build
+        key: derived-data-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}-${{ hashFiles('ios/Podfile.lock') }}
+        restore-keys: |
+          derived-data-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json') }}-
+          derived-data-${{ runner.os }}-
+
     - name: Build iOS Simulator app (xcodebuild)
       shell: bash
       run: |
@@ -49,7 +67,7 @@ runs:
           -sdk iphonesimulator \
           -destination 'generic/platform=iOS Simulator' \
           -derivedDataPath ios/build \
-          clean build \
+          build \
           CODE_SIGNING_ALLOWED=NO \
           CODE_SIGNING_REQUIRED=NO | xcbeautify --renderer github-actions
 
