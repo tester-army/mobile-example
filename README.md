@@ -1,50 +1,112 @@
-# Welcome to your Expo app 👋
+# TesterArmy Mobile Testing Example
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+Example [Expo](https://expo.dev) app demonstrating [TesterArmy's](https://tester.army) AI-powered mobile testing. Built with Expo SDK 54, React Native 0.81, and React 19.
 
-## Get started
+TesterArmy runs your app on cloud simulators and uses AI agents to click through it like real users — catching regressions without brittle selector-based tests.
 
-1. Install dependencies
+## Prerequisites
 
-   ```bash
-   npm install
-   ```
+- [Node.js](https://nodejs.org/)
+- [Xcode](https://developer.apple.com/xcode/) (for iOS simulator builds)
+- [TesterArmy account](https://tester.army/sign-in) + API key (Team Settings → API Keys)
 
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+## Getting Started
 
 ```bash
-npm run reset-project
+npm install
+npx expo start
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+See [Expo docs](https://docs.expo.dev/) for emulator/simulator setup.
 
-## Learn more
+## Building for iOS Simulator
 
-To learn more about developing your project with Expo, look at the following resources:
+Generate the native project and build a simulator binary:
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+```bash
+# Generate native iOS project
+npx expo prebuild --platform ios
 
-## Join the community
+# Build for simulator
+xcodebuild -workspace ios/testerarmy.xcworkspace \
+  -scheme testerarmy \
+  -configuration Debug \
+  -sdk iphonesimulator \
+  -derivedDataPath build \
+  build
 
-Join our community of developers creating universal apps.
+# Zip the .app bundle for upload
+cd build/Build/Products/Debug-iphonesimulator
+zip -r testerarmy.app.zip testerarmy.app
+```
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+## Uploading to TesterArmy
+
+**Via dashboard:** Go to your project → **Mobile** tab → **Browse Files** → select the `.app.zip` file.
+
+**Via API:** Use the 3-step presigned URL flow:
+
+```bash
+# Step 1: Initiate upload
+RESPONSE=$(curl -s -X POST https://tester.army/api/v1/projects/$PROJECT_ID/mobile/upload \
+  -H "Authorization: Bearer $TESTERARMY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"filename\": \"testerarmy.app.zip\",
+    \"fileSize\": $(stat -f%z testerarmy.app.zip),
+    \"removeAfter\": 3600
+  }")
+
+UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.uploadUrl')
+STORAGE_KEY=$(echo "$RESPONSE" | jq -r '.storageKey')
+
+# Step 2: Upload to storage
+curl -X PUT "$UPLOAD_URL" \
+  -H "Content-Type: application/octet-stream" \
+  --data-binary @testerarmy.app.zip
+
+# Step 3: Confirm upload
+curl -s -X POST https://tester.army/api/v1/projects/$PROJECT_ID/mobile/upload/confirm \
+  -H "Authorization: Bearer $TESTERARMY_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d "{
+    \"storageKey\": \"$STORAGE_KEY\",
+    \"filename\": \"testerarmy.app.zip\",
+    \"fileSize\": $(stat -f%z testerarmy.app.zip),
+    \"removeAfter\": 3600
+  }"
+```
+
+See [Mobile Apps API docs](https://tester.army/docs/api/mobile) for the full response schema.
+
+## Writing Tests
+
+Create tests in the [TesterArmy dashboard](https://tester.army) with step-by-step prompts. Guide the agent like you would a human user.
+
+**Weak prompt:** *"Check the explore tab"*
+
+**Strong prompt:** *"Tap the Explore tab at the bottom, scroll down to the 'File-based routing' section, tap to expand it, verify the content is visible"*
+
+Both work, but specific prompts produce more reliable tests.
+
+## Running Tests in CI
+
+This repo includes a GitHub Action (`.github/workflows/testerarmy.yml`) that builds the app for the iOS simulator, uploads it to TesterArmy, and triggers your test group.
+
+**Required GitHub secrets:**
+
+| Secret | Description |
+|--------|-------------|
+| `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
+| `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
+| `TESTERARMY_WEBHOOK_URL` | Group webhook URL (includes secret) |
+
+The workflow runs on every push to `main` and on pull requests. See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details.
+
+## Links
+
+- [TesterArmy — Mobile Testing Overview](https://tester.army/docs/mobile/overview)
+- [TesterArmy — App Uploads](https://tester.army/docs/mobile/app-uploads)
+- [TesterArmy — Writing Mobile Tests](https://tester.army/docs/mobile/writing-tests)
+- [TesterArmy — CI Integration](https://tester.army/docs/mobile/ci-integration)
+- [Expo Documentation](https://docs.expo.dev/)
