@@ -1,0 +1,60 @@
+name: Build iOS Simulator app (Expo)
+description: Runs Expo prebuild for iOS, CocoaPods, and xcodebuild to produce a Debug Simulator .app bundle.
+
+outputs:
+  app_path:
+    description: Absolute path to the built .app bundle (Debug, iphonesimulator).
+    value: ${{ steps.resolve.outputs.app_path }}
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: "24"
+        cache: npm
+
+    - name: Install dependencies
+      shell: bash
+      run: npm ci
+
+    - name: Expo prebuild (iOS)
+      shell: bash
+      env:
+        CI: "true"
+      run: npx expo prebuild --platform ios --no-install
+
+    - name: CocoaPods install
+      shell: bash
+      working-directory: ios
+      run: pod install
+
+    - name: Build iOS Simulator app (xcodebuild)
+      shell: bash
+      run: |
+        set -euo pipefail
+        xcodebuild \
+          -workspace ios/testerarmy.xcworkspace \
+          -scheme testerarmy \
+          -configuration Debug \
+          -sdk iphonesimulator \
+          -destination 'generic/platform=iOS Simulator' \
+          -derivedDataPath ios/build \
+          clean build \
+          CODE_SIGNING_ALLOWED=NO \
+          CODE_SIGNING_REQUIRED=NO
+
+    - name: Resolve .app path
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+        PRODUCTS="$GITHUB_WORKSPACE/ios/build/Build/Products/Debug-iphonesimulator"
+        APP_PATH="$(find "$PRODUCTS" -maxdepth 1 -type d -name '*.app' | head -1)"
+        if [[ -z "${APP_PATH:-}" || ! -d "$APP_PATH" ]]; then
+          echo "Could not find a .app under $PRODUCTS"
+          exit 1
+        fi
+        echo "app_path=$APP_PATH" >> "$GITHUB_OUTPUT"
+        echo "Built app: $APP_PATH"

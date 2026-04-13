@@ -1,0 +1,36 @@
+name: TesterArmy Upload App
+description: Uploads a mobile app build to TesterArmy and returns the uploaded app ID.
+
+inputs:
+  app_path:
+    description: Path to the app build file or directory to upload.
+    required: true
+  api_key:
+    description: TesterArmy API key.
+    required: true
+  project_id:
+    description: TesterArmy project ID.
+    required: true
+  remove_after:
+    description: Time in seconds after which TesterArmy should remove the upload.
+    required: false
+    default: "3600"
+
+outputs:
+  app_id:
+    description: Uploaded TesterArmy app ID.
+    value: ${{ steps.upload.outputs.app_id }}
+
+runs:
+  using: composite
+  steps:
+    - id: upload
+      name: Upload app
+      shell: bash
+      env:
+        ACTION_PATH: ${{ github.action_path }}
+        APP_PATH: ${{ inputs.app_path }}
+        API_KEY: ${{ inputs.api_key }}
+        PROJECT_ID: ${{ inputs.project_id }}
+        REMOVE_AFTER: ${{ inputs.remove_after }}
+      run: node --experimental-strip-types "$ACTION_PATH/upload-mobile.ts"
