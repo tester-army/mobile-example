@@ -30,6 +30,14 @@ runs:
       working-directory: ios
       run: pod install
 
+    - name: Install xcbeautify
+      shell: bash
+      run: |
+        set -euo pipefail
+        if ! command -v xcbeautify >/dev/null 2>&1; then
+          brew install xcbeautify
+        fi
+
     - name: Build iOS Simulator app (xcodebuild)
       shell: bash
       run: |
@@ -43,7 +51,7 @@ runs:
           -derivedDataPath ios/build \
           clean build \
           CODE_SIGNING_ALLOWED=NO \
-          CODE_SIGNING_REQUIRED=NO
+          CODE_SIGNING_REQUIRED=NO | xcbeautify --renderer github-actions
 
     - name: Resolve .app path
       id: resolve
