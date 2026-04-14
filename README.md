@@ -35,49 +35,48 @@ xcodebuild -workspace ios/testerarmy.xcworkspace \
   -derivedDataPath build \
   build
 
-# Zip the .app bundle for upload
-cd build/Build/Products/Debug-iphonesimulator
-zip -r testerarmy.app.zip testerarmy.app
+# The built app bundle will be available at:
+# build/Build/Products/Debug-iphonesimulator/testerarmy.app
 ```
 
-## Uploading to TesterArmy
+The shared GitHub Action can upload the `.app` bundle directory directly, so you do not need to zip it first.
 
-**Via dashboard:** Go to your project → **Mobile** tab → **Browse Files** → select the `.app.zip` file.
+## Running Tests in GitHub Actions
 
-**Via API:** Use the 3-step presigned URL flow:
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and run TesterArmy automatically with `tester-army/mobile-github-action@v1.0.1`.
 
-```bash
-# Step 1: Initiate upload
-RESPONSE=$(curl -s -X POST https://tester.army/api/v1/projects/$PROJECT_ID/mobile/upload \
-  -H "Authorization: Bearer $TESTERARMY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"filename\": \"testerarmy.app.zip\",
-    \"fileSize\": $(stat -f%z testerarmy.app.zip),
-    \"removeAfter\": 3600
-  }")
+### 1. Add the required GitHub secrets
 
-UPLOAD_URL=$(echo "$RESPONSE" | jq -r '.uploadUrl')
-STORAGE_KEY=$(echo "$RESPONSE" | jq -r '.storageKey')
+| Secret | Description |
+|--------|-------------|
+| `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
+| `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
+| `TESTERARMY_WEBHOOK_URL` | Group webhook URL (includes secret) |
 
-# Step 2: Upload to storage
-curl -X PUT "$UPLOAD_URL" \
-  -H "Content-Type: application/octet-stream" \
-  --data-binary @testerarmy.app.zip
+### 2. Use the action in your workflow
 
-# Step 3: Confirm upload
-curl -s -X POST https://tester.army/api/v1/projects/$PROJECT_ID/mobile/upload/confirm \
-  -H "Authorization: Bearer $TESTERARMY_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d "{
-    \"storageKey\": \"$STORAGE_KEY\",
-    \"filename\": \"testerarmy.app.zip\",
-    \"fileSize\": $(stat -f%z testerarmy.app.zip),
-    \"removeAfter\": 3600
-  }"
+After building your `.app` bundle or downloading it from a previous job, call the shared action:
+
+```yaml
+- name: Upload app and run TesterArmy tests
+  id: mobile
+  uses: tester-army/mobile-github-action@v1.0.1
+  with:
+    app_path: .build/testerarmy.app
+    api_key: ${{ secrets.TESTERARMY_API_KEY }}
+    project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+    webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+    delete_app_after_run: "true"
+    remove_after: "3600"
 ```
 
-See [Mobile Apps API docs](https://tester.army/docs/api/mobile) for the full response schema.
+The action handles the full mobile flow for you: upload the app, trigger your test group through the webhook, wait for the runs to finish, and delete the uploaded app afterward.
+
+### 3. Trigger the workflow
+
+This example workflow runs on pull requests, on pushes to `main`, and manually through `workflow_dispatch`.
+
+You do not need to upload the app in the TesterArmy dashboard or call the upload API yourself unless you want a custom integration outside GitHub Actions.
 
 ## Writing Tests
 
@@ -89,19 +88,11 @@ Create tests in the [TesterArmy dashboard](https://tester.army) with step-by-ste
 
 Both work, but specific prompts produce more reliable tests.
 
-## Running Tests in CI
+## CI Notes
 
-This repo includes a GitHub Action (`.github/workflows/testerarmy.yml`) that builds the app for the iOS simulator, uploads it to TesterArmy, and triggers your test group.
+The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the app on `macos-latest`, passes the `.app` artifact to a Linux job, and then runs the shared TesterArmy action there.
 
-**Required GitHub secrets:**
-
-| Secret | Description |
-|--------|-------------|
-| `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
-| `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
-| `TESTERARMY_WEBHOOK_URL` | Group webhook URL (includes secret) |
-
-The workflow runs on every push to `main` and on pull requests. See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details.
+See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details and additional workflow patterns.
 
 ## Links
 
