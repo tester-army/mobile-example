@@ -1,0 +1,73 @@
+name: Test Mobile App Example
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+
+jobs:
+  build:
+    name: Build iOS Simulator app
+    runs-on: macos-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Cache built .app
+        id: app-cache
+        uses: actions/cache@v4
+        with:
+          path: .build/testerarmy.app
+          key: ios-app-${{ runner.os }}-${{ hashFiles('package-lock.json', 'app.json', 'app/**', 'assets/**') }}
+
+      - name: Build iOS Simulator app
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        id: build
+        uses: ./.github/actions/build-ios-simulator-app
+
+      - name: Copy .app to cache path
+        if: steps.app-cache.outputs.cache-hit != 'true'
+        shell: bash
+        run: |
+          mkdir -p .build
+          cp -R "${{ steps.build.outputs.app_path }}" .build/testerarmy.app
+
+      - name: Upload .app artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: testerarmy-simulator-app
+          path: .build/testerarmy.app
+          retention-days: 1
+
+  test:
+    name: Run TesterArmy tests
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download .app artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: testerarmy-simulator-app
+          path: .build/testerarmy.app
+
+      - name: Upload app and run TesterArmy tests
+        id: mobile
+        uses: tester-army/mobile-github-action@v1.0.1
+        with:
+          app_path: .build/testerarmy.app
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+          webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+          delete_app_after_run: "true"
+          remove_after: "3600"
+
+      - name: Print overall status
+        run: |
+          echo "Overall status: ${{ steps.mobile.outputs.overall_status }}"
