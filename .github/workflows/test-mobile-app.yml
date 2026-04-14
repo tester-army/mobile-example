@@ -59,7 +59,7 @@ jobs:
 
       - name: Upload app and run TesterArmy tests
         id: mobile
-        uses: tester-army/mobile-github-action@v1
+        uses: tester-army/mobile-github-action@v1.0.1
         with:
           app_path: .build/testerarmy.app
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
