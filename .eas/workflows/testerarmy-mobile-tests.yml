@@ -1,0 +1,171 @@
+name: TesterArmy Mobile Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      project_id:
+        type: string
+        required: false
+        description: TesterArmy project ID. Falls back to TESTERARMY_PROJECT_ID.
+      group_id:
+        type: string
+        required: false
+        description: TesterArmy test group ID. Falls back to TESTERARMY_GROUP_ID.
+      timeout_ms:
+        type: number
+        required: false
+        default: 1800000
+        description: Maximum time to wait for TesterArmy test runs.
+      delete_app_after_run:
+        type: choice
+        options:
+          - "true"
+          - "false"
+        required: false
+        default: "true"
+        description: Delete the uploaded app after all test runs finish.
+      eas_environment:
+        type: environment
+        required: false
+        default: preview
+        description: EAS environment containing TesterArmy environment variables.
+
+jobs:
+  fingerprint_ios:
+    name: Calculate iOS fingerprint
+    type: fingerprint
+    environment: ${{ inputs.eas_environment || 'preview' }}
+
+  get_ios_build:
+    name: Find matching iOS Simulator build
+    needs: [fingerprint_ios]
+    type: get-build
+    params:
+      platform: ios
+      profile: testerarmy-ios-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint_ios.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  build_ios:
+    name: Build iOS Simulator app
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    environment: ${{ inputs.eas_environment || 'preview' }}
+    params:
+      platform: ios
+      profile: testerarmy-ios-simulator
+
+  upload_app:
+    name: Upload app to TesterArmy
+    after: [get_ios_build, build_ios]
+    if: ${{ after.get_ios_build.outputs.build_id || after.build_ios.outputs.build_id }}
+    environment: ${{ inputs.eas_environment || 'preview' }}
+    outputs:
+      app_id: ${{ fromJSON(steps.upload_app.outputs.upload_result).uploadedAppId }}
+      project_id: ${{ steps.upload_app.outputs.project_id }}
+    steps:
+      - uses: eas/checkout
+
+      - uses: eas/install_node_modules
+
+      - uses: eas/download_build
+        id: download_build
+        with:
+          build_id: ${{ after.get_ios_build.outputs.build_id || after.build_ios.outputs.build_id }}
+          extensions:
+            - app
+
+      - name: Upload app
+        id: upload_app
+        run: |
+          set -euo pipefail
+
+          APP_PATH="${{ steps.download_build.outputs.artifact_path }}"
+          PROJECT_ID="${{ inputs.project_id || '' }}"
+
+          if [ -z "${PROJECT_ID:-}" ]; then
+            PROJECT_ID="${TESTERARMY_PROJECT_ID:-}"
+          fi
+          if [ -z "${PROJECT_ID:-}" ]; then
+            echo "Missing TesterArmy project ID. Provide workflow input project_id or set TESTERARMY_PROJECT_ID in the EAS environment."
+            exit 1
+          fi
+
+          mkdir -p .testerarmy
+
+          npx --yes testerarmy@latest upload-app \
+            --app-path "$APP_PATH" \
+            --project "$PROJECT_ID" \
+            --output .testerarmy/upload.json
+
+          set-output upload_result "$(tr -d '\n' < .testerarmy/upload.json)"
+          set-output project_id "$PROJECT_ID"
+
+  run_tests:
+    name: Run TesterArmy tests
+    needs: [upload_app]
+    environment: ${{ inputs.eas_environment || 'preview' }}
+    steps:
+      - uses: eas/checkout
+
+      - uses: eas/install_node_modules
+
+      - name: Run tests
+        run: |
+          set -euo pipefail
+
+          GROUP_ID="${{ inputs.group_id || env.TESTERARMY_GROUP_ID || '' }}"
+          PROJECT_ID="${{ inputs.project_id || env.TESTERARMY_PROJECT_ID || needs.upload_app.outputs.project_id }}"
+          APP_ID="${{ needs.upload_app.outputs.app_id }}"
+          COMMIT_SHA="${{ github.sha }}"
+          EVENT_NAME="${{ github.event_name }}"
+          PR_NUMBER="${{ github.event.pull_request.number || '' }}"
+          TIMEOUT_MS="${{ inputs.timeout_ms || 1800000 }}"
+          POLL_INTERVAL_SECONDS="10"
+          DELETE_APP_AFTER_RUN="${{ inputs.delete_app_after_run || 'true' }}"
+
+          if [ -z "${GROUP_ID:-}" ]; then
+            GROUP_ID="${TESTERARMY_GROUP_ID:-}"
+          fi
+          if [ -z "${GROUP_ID:-}" ]; then
+            echo "Missing TesterArmy group ID. Provide workflow input group_id or set TESTERARMY_GROUP_ID in the EAS environment."
+            exit 1
+          fi
+          if [ -z "${PROJECT_ID:-}" ]; then
+            PROJECT_ID="${TESTERARMY_PROJECT_ID:-}"
+          fi
+          if [ -z "${PROJECT_ID:-}" ]; then
+            echo "Missing TesterArmy project ID. Provide workflow input project_id or set TESTERARMY_PROJECT_ID in the EAS environment."
+            exit 1
+          fi
+
+          mkdir -p .testerarmy
+
+          args=(
+            ci
+            --group "$GROUP_ID"
+            --project "$PROJECT_ID"
+            --app-id "$APP_ID"
+            --commit-sha "$COMMIT_SHA"
+            --timeout "$TIMEOUT_MS"
+            --poll-interval-seconds "$POLL_INTERVAL_SECONDS"
+            --output .testerarmy/ci-result.json
+          )
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
+            args+=(--pr-number "$PR_NUMBER")
+          fi
+
+          if [ "$DELETE_APP_AFTER_RUN" = "true" ]; then
+            args+=(--delete-app-after-run)
+          fi
+
+          npx --yes testerarmy@latest "${args[@]}"

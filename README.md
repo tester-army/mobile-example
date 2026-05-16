@@ -39,7 +39,42 @@ xcodebuild -workspace ios/testerarmy.xcworkspace \
 # build/Build/Products/Debug-iphonesimulator/testerarmy.app
 ```
 
-The shared GitHub Action can upload the `.app` bundle directory directly, so you do not need to zip it first.
+TesterArmy can upload the `.app` bundle directory directly, so you do not need to zip it first.
+
+## Running Tests with EAS Workflows
+
+This repo includes `.eas/workflows/testerarmy-mobile-tests.yml`. The workflow builds an iOS Simulator app with EAS Build, uploads the app with `testerarmy`, and runs your TesterArmy dashboard test group.
+
+### 1. Configure EAS environment variables
+
+Add these variables to the EAS environment you want to use, for example `preview`:
+
+| Variable | Description |
+|----------|-------------|
+| `TESTERARMY_API_KEY` | API key from Team Settings -> API Keys |
+| `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
+| `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
+
+The workflow also accepts `project_id` and `group_id` inputs, which override the EAS environment variables for manual runs.
+
+### 2. Run the workflow
+
+If the project and group IDs are configured in EAS env vars:
+
+```bash
+npx eas-cli@latest workflow:run .eas/workflows/testerarmy-mobile-tests.yml --wait
+```
+
+Or pass them explicitly:
+
+```bash
+npx eas-cli@latest workflow:run .eas/workflows/testerarmy-mobile-tests.yml \
+  --wait \
+  --input project_id=<testerarmy-project-id> \
+  --input group_id=<testerarmy-group-id>
+```
+
+The workflow uses `npx --yes testerarmy@latest`, so it does not require adding the TesterArmy CLI to your app dependencies.
 
 ## Running Tests in GitHub Actions
 
