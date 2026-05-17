@@ -132,21 +132,6 @@ jobs:
           POLL_INTERVAL_SECONDS="10"
           DELETE_APP_AFTER_RUN="${{ inputs.delete_app_after_run || 'true' }}"
 
-          if [ -z "${GROUP_ID:-}" ]; then
-            GROUP_ID="${TESTERARMY_GROUP_ID:-}"
-          fi
-          if [ -z "${GROUP_ID:-}" ]; then
-            echo "Missing TesterArmy group ID. Provide workflow input group_id or set TESTERARMY_GROUP_ID in the EAS environment."
-            exit 1
-          fi
-          if [ -z "${PROJECT_ID:-}" ]; then
-            PROJECT_ID="${TESTERARMY_PROJECT_ID:-}"
-          fi
-          if [ -z "${PROJECT_ID:-}" ]; then
-            echo "Missing TesterArmy project ID. Provide workflow input project_id or set TESTERARMY_PROJECT_ID in the EAS environment."
-            exit 1
-          fi
-
           mkdir -p .testerarmy
 
           args=(
