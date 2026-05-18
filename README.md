@@ -39,7 +39,56 @@ xcodebuild -workspace ios/testerarmy.xcworkspace \
 # build/Build/Products/Debug-iphonesimulator/testerarmy.app
 ```
 
-The shared GitHub Action can upload the `.app` bundle directory directly, so you do not need to zip it first.
+TesterArmy can upload the `.app` bundle directory directly, so you do not need to zip it first.
+
+## Running Tests with EAS Workflows
+
+This repo uses `.eas/workflows/testerarmy-mobile-tests.yml` to build the iOS simulator app and run TesterArmy automatically with `npx --yes testerarmy@latest`.
+
+### 1. Add the required EAS environment variables
+
+Add these variables to the EAS environment you want to use, for example `preview`:
+
+| Variable | Description |
+|----------|-------------|
+| `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
+| `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
+| `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
+
+### 2. Use the CLI in your EAS workflow
+
+After building or downloading your `.app` bundle in EAS Workflows, upload it and run your dashboard group:
+
+```yaml
+- name: Upload app
+  id: upload_app
+  run: |
+    npx --yes testerarmy@latest upload-app \
+      --app-path "$APP_PATH" \
+      --project "$TESTERARMY_PROJECT_ID" \
+      --output .testerarmy/upload.json
+
+    set-output upload_result "$(tr -d '\n' < .testerarmy/upload.json)"
+
+- name: Run TesterArmy tests
+  run: |
+    npx --yes testerarmy@latest ci \
+      --group "$TESTERARMY_GROUP_ID" \
+      --project "$TESTERARMY_PROJECT_ID" \
+      --app-id "${{ fromJSON(steps.upload_app.outputs.upload_result).uploadedAppId }}" \
+      --delete-app-after-run \
+      --output .testerarmy/ci-result.json
+```
+
+The full example workflow also calculates an Expo fingerprint and reuses an existing matching iOS simulator build when possible.
+
+### 3. Trigger the workflow
+
+```bash
+npx eas-cli@latest workflow:run .eas/workflows/testerarmy-mobile-tests.yml --wait
+```
+
+The workflow also runs on pull requests and pushes to `main`. You do not need to add the TesterArmy CLI to your app dependencies.
 
 ## Running Tests in GitHub Actions
 

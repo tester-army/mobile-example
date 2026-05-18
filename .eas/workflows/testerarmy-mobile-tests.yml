@@ -1,0 +1,110 @@
+name: TesterArmy Mobile Tests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch: {}
+
+jobs:
+  fingerprint_ios:
+    name: Calculate iOS fingerprint
+    type: fingerprint
+    environment: preview
+
+  get_ios_build:
+    name: Find matching iOS Simulator build
+    needs: [fingerprint_ios]
+    type: get-build
+    params:
+      platform: ios
+      profile: testerarmy-ios-simulator
+      simulator: true
+      fingerprint_hash: ${{ needs.fingerprint_ios.outputs.ios_fingerprint_hash }}
+      wait_for_in_progress: true
+
+  build_ios:
+    name: Build iOS Simulator app
+    needs: [get_ios_build]
+    if: ${{ !needs.get_ios_build.outputs.build_id }}
+    type: build
+    environment: preview
+    params:
+      platform: ios
+      profile: testerarmy-ios-simulator
+
+  upload_app:
+    name: Upload app to TesterArmy
+    after: [get_ios_build, build_ios]
+    if: ${{ after.get_ios_build.outputs.build_id || after.build_ios.outputs.build_id }}
+    environment: preview
+    outputs:
+      app_id: ${{ fromJSON(steps.upload_app.outputs.upload_result).uploadedAppId }}
+      project_id: ${{ steps.upload_app.outputs.project_id }}
+    steps:
+      - uses: eas/checkout
+
+      - uses: eas/download_build
+        id: download_build
+        with:
+          build_id: ${{ after.get_ios_build.outputs.build_id || after.build_ios.outputs.build_id }}
+          extensions:
+            - app
+
+      - name: Upload app
+        id: upload_app
+        run: |
+          set -euo pipefail
+
+          APP_PATH="${{ steps.download_build.outputs.artifact_path }}"
+
+          mkdir -p .testerarmy
+
+          npx --yes testerarmy@latest upload-app \
+            --app-path "$APP_PATH" \
+            --project "$TESTERARMY_PROJECT_ID" \
+            --output .testerarmy/upload.json
+
+          set-output upload_result "$(tr -d '\n' < .testerarmy/upload.json)"
+          set-output project_id "$TESTERARMY_PROJECT_ID"
+
+  run_tests:
+    name: Run TesterArmy tests
+    needs: [upload_app]
+    environment: preview
+    steps:
+      - uses: eas/checkout
+
+      - name: Run tests
+        run: |
+          set -euo pipefail
+
+          APP_ID="${{ needs.upload_app.outputs.app_id }}"
+          COMMIT_SHA="${{ github.sha }}"
+          EVENT_NAME="${{ github.event_name }}"
+          PR_NUMBER="${{ github.event.pull_request.number || '' }}"
+          TIMEOUT_MS="1800000"
+          POLL_INTERVAL_SECONDS="10"
+
+          mkdir -p .testerarmy
+
+          args=(
+            ci
+            --group "$TESTERARMY_GROUP_ID"
+            --project "$TESTERARMY_PROJECT_ID"
+            --app-id "$APP_ID"
+            --commit-sha "$COMMIT_SHA"
+            --timeout "$TIMEOUT_MS"
+            --poll-interval-seconds "$POLL_INTERVAL_SECONDS"
+            --output .testerarmy/ci-result.json
+            --delete-app-after-run
+          )
+
+          if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
+            args+=(--pr-number "$PR_NUMBER")
+          fi
+
+          npx --yes testerarmy@latest "${args[@]}"

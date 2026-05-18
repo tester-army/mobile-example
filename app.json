@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "testerarmy",
-    "slug": "testerarmy",
+    "slug": "testerarmyexampleapp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
@@ -44,6 +44,13 @@
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "22247833-0032-4708-b80e-c376a4be3dbb"
+      }
+    },
+    "owner": "testerarmy"
   }
 }

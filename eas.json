@@ -1,0 +1,9 @@
+{
+  "build": {
+    "testerarmy-ios-simulator": {
+      "ios": {
+        "simulator": true
+      }
+    }
+  }
+}
