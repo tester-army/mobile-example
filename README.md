@@ -84,19 +84,8 @@ The full example workflow also calculates an Expo fingerprint and reuses an exis
 
 ### 3. Trigger the workflow
 
-If the project and group IDs are configured in EAS env vars:
-
 ```bash
 npx eas-cli@latest workflow:run .eas/workflows/testerarmy-mobile-tests.yml --wait
-```
-
-Or pass them explicitly:
-
-```bash
-npx eas-cli@latest workflow:run .eas/workflows/testerarmy-mobile-tests.yml \
-  --wait \
-  --input project_id=<testerarmy-project-id> \
-  --input group_id=<testerarmy-group-id>
 ```
 
 The workflow also runs on pull requests and pushes to `main`. You do not need to add the TesterArmy CLI to your app dependencies.
