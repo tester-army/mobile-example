@@ -92,7 +92,9 @@ The workflow also runs on pull requests and pushes to `main`. You do not need to
 
 ## Running Tests in GitHub Actions
 
-This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and run TesterArmy automatically with `tester-army/mobile-github-action@v1.0.1`.
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and run TesterArmy automatically with the CLI-backed `tester-army/mobile-github-action`.
+
+Until tester-army/mobile-github-action#2 is merged and released, the workflow points at the PR branch: `tester-army/mobile-github-action@KrzysztofMoch/migrate-action-to-cli`.
 
 ### 1. Add the required GitHub secrets
 
@@ -100,7 +102,7 @@ This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulato
 |--------|-------------|
 | `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
 | `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
-| `TESTERARMY_WEBHOOK_URL` | Group webhook URL (includes secret) |
+| `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
 
 ### 2. Use the action in your workflow
 
@@ -109,17 +111,17 @@ After building your `.app` bundle or downloading it from a previous job, call th
 ```yaml
 - name: Upload app and run TesterArmy tests
   id: mobile
-  uses: tester-army/mobile-github-action@v1.0.1
+  uses: tester-army/mobile-github-action@KrzysztofMoch/migrate-action-to-cli
   with:
     app_path: .build/testerarmy.app
     api_key: ${{ secrets.TESTERARMY_API_KEY }}
     project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-    webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+    group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
     delete_app_after_run: "true"
     remove_after: "3600"
 ```
 
-The action handles the full mobile flow for you: upload the app, trigger your test group through the webhook, wait for the runs to finish, and delete the uploaded app afterward.
+The action handles the full mobile flow for you: upload the app, run your dashboard test group, wait for the CLI result, and delete the uploaded app afterward.
 
 ### 3. Trigger the workflow
 

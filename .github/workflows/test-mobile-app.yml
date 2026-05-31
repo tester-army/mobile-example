@@ -59,12 +59,13 @@ jobs:
 
       - name: Upload app and run TesterArmy tests
         id: mobile
-        uses: tester-army/mobile-github-action@v1.0.1
+        # TODO: switch to the released action tag after tester-army/mobile-github-action#2 merges.
+        uses: tester-army/mobile-github-action@KrzysztofMoch/migrate-action-to-cli
         with:
           app_path: .build/testerarmy.app
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
           project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-          webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+          group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
           delete_app_after_run: "true"
           remove_after: "3600"
 
