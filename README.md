@@ -2,12 +2,13 @@
 
 Example [Expo](https://expo.dev) app demonstrating [TesterArmy's](https://tester.army) AI-powered mobile testing. Built with Expo SDK 54, React Native 0.81, and React 19.
 
-TesterArmy runs your app on cloud simulators and uses AI agents to click through it like real users — catching regressions without brittle selector-based tests.
+TesterArmy runs your app on cloud simulators/emulators and uses AI agents to click through it like real users — catching regressions without brittle selector-based tests.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/)
 - [Xcode](https://developer.apple.com/xcode/) (for iOS simulator builds)
+- Android SDK/JDK (for local Android app builds)
 - [TesterArmy account](https://tester.army/sign-in) + API key (Team Settings → API Keys)
 
 ## Getting Started
@@ -41,9 +42,27 @@ xcodebuild -workspace ios/testerarmy.xcworkspace \
 
 TesterArmy can upload the `.app` bundle directory directly, so you do not need to zip it first.
 
+## Building for Android
+
+Generate the native project and build a release APK:
+
+```bash
+# Generate native Android project
+npx expo prebuild --platform android --no-install
+
+# Build a release APK with the JavaScript bundle and assets embedded
+cd android
+./gradlew :app:assembleRelease
+
+# The built APK will be available under:
+# android/app/build/outputs/apk/release/
+```
+
+TesterArmy runs Android builds without a Metro dev server, so use a release APK rather than a debug APK.
+
 ## Running Tests with EAS Workflows
 
-This repo uses `.eas/workflows/testerarmy-mobile-tests.yml` to build the iOS simulator app and run TesterArmy automatically with `npx --yes testerarmy@latest`.
+This repo uses `.eas/workflows/testerarmy-mobile-tests.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `npx --yes testerarmy@latest`.
 
 ### 1. Add the required EAS environment variables
 
@@ -57,7 +76,7 @@ Add these variables to the EAS environment you want to use, for example `preview
 
 ### 2. Use the CLI in your EAS workflow
 
-After building or downloading your `.app` bundle in EAS Workflows, upload it and run your dashboard group:
+After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upload it and run your dashboard group:
 
 ```yaml
 - name: Upload app
@@ -75,12 +94,13 @@ After building or downloading your `.app` bundle in EAS Workflows, upload it and
     npx --yes testerarmy@latest ci \
       --group "$TESTERARMY_GROUP_ID" \
       --project "$TESTERARMY_PROJECT_ID" \
+      --platform ios \
       --app-id "${{ fromJSON(steps.upload_app.outputs.upload_result).uploadedAppId }}" \
       --delete-app-after-run \
       --output .testerarmy/ci-result.json
 ```
 
-The full example workflow also calculates an Expo fingerprint and reuses an existing matching iOS simulator build when possible.
+Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints and reuses existing matching iOS and Android builds when possible.
 
 ### 3. Trigger the workflow
 
@@ -92,7 +112,9 @@ The workflow also runs on pull requests and pushes to `main`. You do not need to
 
 ## Running Tests in GitHub Actions
 
-This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and run TesterArmy automatically with `tester-army/mobile-github-action@v1.0.1`.
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action@feat/add-platform-input`.
+
+The action branch is temporary while the `platform` input is under review. Replace it with the next released action tag after the platform input is published.
 
 ### 1. Add the required GitHub secrets
 
@@ -100,26 +122,27 @@ This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulato
 |--------|-------------|
 | `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
 | `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
-| `TESTERARMY_WEBHOOK_URL` | Group webhook URL (includes secret) |
+| `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
 
 ### 2. Use the action in your workflow
 
-After building your `.app` bundle or downloading it from a previous job, call the shared action:
+After building your `.app` bundle or Android `.apk`, call the shared action with the matching platform:
 
 ```yaml
 - name: Upload app and run TesterArmy tests
   id: mobile
-  uses: tester-army/mobile-github-action@v1.0.1
+  uses: tester-army/mobile-github-action@feat/add-platform-input
   with:
     app_path: .build/testerarmy.app
+    platform: ios
     api_key: ${{ secrets.TESTERARMY_API_KEY }}
     project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-    webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+    group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
     delete_app_after_run: "true"
-    remove_after: "3600"
+    remove_after: "86400"
 ```
 
-The action handles the full mobile flow for you: upload the app, trigger your test group through the webhook, wait for the runs to finish, and delete the uploaded app afterward.
+For Android, pass `app_path: .build/testerarmy.apk` and `platform: android`. The action handles the full mobile flow for you: upload the app, run your test group, wait for the runs to finish, and delete the uploaded app afterward.
 
 ### 3. Trigger the workflow
 
@@ -139,7 +162,7 @@ Both work, but specific prompts produce more reliable tests.
 
 ## CI Notes
 
-The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the app on `macos-latest`, passes the `.app` artifact to a Linux job, and then runs the shared TesterArmy action there.
+The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the iOS app on `macos-latest`, builds the Android app on `ubuntu-latest`, passes both artifacts to Linux test jobs, and then runs the shared TesterArmy action for each platform.
 
 See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details and additional workflow patterns.
 

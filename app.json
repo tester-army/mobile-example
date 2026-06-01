@@ -13,6 +13,7 @@
       "bundleIdentifier": "com.okwasniewski.testerarmy"
     },
     "android": {
+      "package": "com.okwasniewski.testerarmy",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
