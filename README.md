@@ -112,9 +112,7 @@ The workflow also runs on pull requests and pushes to `main`. You do not need to
 
 ## Running Tests in GitHub Actions
 
-This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action@feat/add-platform-input`.
-
-The action branch is temporary while the `platform` input is under review. Replace it with the next released action tag after the platform input is published.
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action@main`.
 
 ### 1. Add the required GitHub secrets
 
@@ -131,7 +129,7 @@ After building your `.app` bundle or Android `.apk`, call the shared action with
 ```yaml
 - name: Upload app and run TesterArmy tests
   id: mobile
-  uses: tester-army/mobile-github-action@feat/add-platform-input
+  uses: tester-army/mobile-github-action@main
   with:
     app_path: .build/testerarmy.app
     platform: ios
