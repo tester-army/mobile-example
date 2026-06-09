@@ -149,7 +149,7 @@ The workflow also runs on pull requests and pushes to `main`. You do not need to
 
 ## Running Tests in GitHub Actions
 
-This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action@main`.
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action`.
 
 ### 1. Add the required GitHub secrets
 
@@ -161,23 +161,58 @@ This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulato
 
 ### 2. Use the action in your workflow
 
-After building your `.app` bundle or Android `.apk`, call the shared action with the matching platform:
+After building your `.app` bundle or Android `.apk`, upload it once, then run dashboard tests and the PR-only dynamic agent against the uploaded app ID. The dynamic agent is enabled by adding a separate job with `mode: dynamic_agent`:
 
 ```yaml
-- name: Upload app and run TesterArmy tests
-  id: mobile
-  uses: tester-army/mobile-github-action@main
-  with:
-    app_path: .build/testerarmy.app
-    platform: ios
-    api_key: ${{ secrets.TESTERARMY_API_KEY }}
-    project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-    group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
-    delete_app_after_run: "true"
-    remove_after: "86400"
+upload_ios:
+  runs-on: ubuntu-latest
+  outputs:
+    app_id: ${{ steps.mobile.outputs.app_id }}
+  steps:
+    # Download or build .build/testerarmy.app first.
+    - name: Upload app
+      id: mobile
+      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
+      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      with:
+        mode: upload
+        app_path: .build/testerarmy.app
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+        remove_after: "86400"
+
+test_ios:
+  needs: upload_ios
+  runs-on: ubuntu-latest
+  steps:
+    - name: Run TesterArmy tests
+      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
+      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      with:
+        mode: test
+        app_id: ${{ needs.upload_ios.outputs.app_id }}
+        platform: ios
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+        group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
+
+dynamic_ios:
+  needs: upload_ios
+  if: ${{ github.event_name == 'pull_request' }}
+  runs-on: ubuntu-latest
+  steps:
+    - name: Run dynamic PR agent
+      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
+      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      with:
+        mode: dynamic_agent
+        app_id: ${{ needs.upload_ios.outputs.app_id }}
+        platform: ios
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
 ```
 
-For Android, pass `app_path: .build/testerarmy.apk` and `platform: android`. The action handles the full mobile flow for you: upload the app, run your test group, wait for the runs to finish, and delete the uploaded app afterward.
+For Android, use `app_path: .build/testerarmy.apk` and `platform: android`. The full example workflow uploads each platform once, runs dashboard tests, and only runs `mode: dynamic_agent` jobs on pull requests. The upload step uses `remove_after: "86400"` so TesterArmy removes the shared app automatically.
 
 ### 3. Trigger the workflow
 
@@ -197,7 +232,7 @@ Both work, but specific prompts produce more reliable tests.
 
 ## CI Notes
 
-The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the iOS app on `macos-latest`, builds the Android app on `ubuntu-latest`, passes both artifacts to Linux test jobs, and then runs the shared TesterArmy action for each platform.
+The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the iOS app on `macos-latest`, builds the Android app on `ubuntu-latest`, uploads both artifacts to TesterArmy from Linux jobs, then runs dashboard tests and PR-only dynamic agents against the shared uploads.
 
 See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details and additional workflow patterns.
 
