@@ -158,7 +158,6 @@ jobs:
             --timeout "$TIMEOUT_MS"
             --poll-interval-seconds "$POLL_INTERVAL_SECONDS"
             --output .testerarmy/ci-result.json
-            --delete-app-after-run
           )
 
           if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
@@ -197,11 +196,138 @@ jobs:
             --timeout "$TIMEOUT_MS"
             --poll-interval-seconds "$POLL_INTERVAL_SECONDS"
             --output .testerarmy/ci-result.json
-            --delete-app-after-run
           )
 
           if [ "$EVENT_NAME" = "pull_request" ] && [ -n "$PR_NUMBER" ]; then
             args+=(--pr-number "$PR_NUMBER")
+          fi
+
+          npx --yes testerarmy@latest "${args[@]}"
+
+  run_ios_dynamic_agent:
+    name: Run iOS TesterArmy dynamic agent
+    needs: [upload_ios_app]
+    if: ${{ github.event_name == 'pull_request' }}
+    environment: preview
+    env:
+      APP_ID: ${{ needs.upload_ios_app.outputs.app_id }}
+      COMMIT_SHA: ${{ github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      PR_TITLE: ${{ github.event.pull_request.title || '' }}
+      PR_DESCRIPTION: ${{ github.event.pull_request.body || '' }}
+      BASE_BRANCH: ${{ github.event.pull_request.base.ref || '' }}
+      HEAD_BRANCH: ${{ github.event.pull_request.head.ref || '' }}
+    steps:
+      - uses: eas/checkout
+
+      - name: Run dynamic PR agent
+        run: |
+          set -euo pipefail
+
+          if [ "${TESTERARMY_DYNAMIC_AGENT_ENABLED:-true}" = "false" ]; then
+            echo "TesterArmy dynamic agent is disabled because TESTERARMY_DYNAMIC_AGENT_ENABLED=false."
+            exit 0
+          fi
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No pull request number found; skipping TesterArmy dynamic agent."
+            exit 0
+          fi
+
+          mkdir -p .testerarmy
+          rm -f .testerarmy/dynamic-result.json
+
+          dynamic_pr_title="$PR_TITLE"
+          if [ -z "$dynamic_pr_title" ]; then
+            dynamic_pr_title="Pull request #$PR_NUMBER"
+          fi
+
+          args=(
+            pr
+            run-dynamic
+            --project "$TESTERARMY_PROJECT_ID"
+            --platform ios
+            --app-id "$APP_ID"
+            --pr-number "$PR_NUMBER"
+            --pr-title "$dynamic_pr_title"
+            --commit-sha "$COMMIT_SHA"
+            --output .testerarmy/dynamic-result.json
+          )
+
+          if [ -n "$PR_DESCRIPTION" ]; then
+            args+=(--pr-description "$PR_DESCRIPTION")
+          fi
+
+          if [ -n "$BASE_BRANCH" ]; then
+            args+=(--base-branch "$BASE_BRANCH")
+          fi
+
+          if [ -n "$HEAD_BRANCH" ]; then
+            args+=(--head-branch "$HEAD_BRANCH")
+          fi
+
+          npx --yes testerarmy@latest "${args[@]}"
+
+  run_android_dynamic_agent:
+    name: Run Android TesterArmy dynamic agent
+    needs: [upload_android_app]
+    if: ${{ github.event_name == 'pull_request' }}
+    environment: preview
+    env:
+      APP_ID: ${{ needs.upload_android_app.outputs.app_id }}
+      COMMIT_SHA: ${{ github.sha }}
+      PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+      PR_TITLE: ${{ github.event.pull_request.title || '' }}
+      PR_DESCRIPTION: ${{ github.event.pull_request.body || '' }}
+      BASE_BRANCH: ${{ github.event.pull_request.base.ref || '' }}
+      HEAD_BRANCH: ${{ github.event.pull_request.head.ref || '' }}
+    steps:
+      - uses: eas/checkout
+
+      - name: Run dynamic PR agent
+        run: |
+          set -euo pipefail
+
+          if [ "${TESTERARMY_DYNAMIC_AGENT_ENABLED:-true}" = "false" ]; then
+            echo "TesterArmy dynamic agent is disabled because TESTERARMY_DYNAMIC_AGENT_ENABLED=false."
+            exit 0
+          fi
+
+          if [ -z "$PR_NUMBER" ]; then
+            echo "No pull request number found; skipping TesterArmy dynamic agent."
+            exit 0
+          fi
+
+          mkdir -p .testerarmy
+          rm -f .testerarmy/dynamic-result.json
+
+          dynamic_pr_title="$PR_TITLE"
+          if [ -z "$dynamic_pr_title" ]; then
+            dynamic_pr_title="Pull request #$PR_NUMBER"
+          fi
+
+          args=(
+            pr
+            run-dynamic
+            --project "$TESTERARMY_PROJECT_ID"
+            --platform android
+            --app-id "$APP_ID"
+            --pr-number "$PR_NUMBER"
+            --pr-title "$dynamic_pr_title"
+            --commit-sha "$COMMIT_SHA"
+            --output .testerarmy/dynamic-result.json
+          )
+
+          if [ -n "$PR_DESCRIPTION" ]; then
+            args+=(--pr-description "$PR_DESCRIPTION")
+          fi
+
+          if [ -n "$BASE_BRANCH" ]; then
+            args+=(--base-branch "$BASE_BRANCH")
+          fi
+
+          if [ -n "$HEAD_BRANCH" ]; then
+            args+=(--head-branch "$HEAD_BRANCH")
           fi
 
           npx --yes testerarmy@latest "${args[@]}"

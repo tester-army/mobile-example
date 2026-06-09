@@ -73,10 +73,11 @@ Add these variables to the EAS environment you want to use, for example `preview
 | `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
 | `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
 | `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
+| `TESTERARMY_DYNAMIC_AGENT_ENABLED` | Optional. Defaults to `true`; set to `false` to skip the dynamic PR agent on pull requests |
 
 ### 2. Use the CLI in your EAS workflow
 
-After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upload it and run your dashboard group:
+For dashboard-only workflows, after building or downloading your `.app` bundle or `.apk` in EAS Workflows, upload it and run your dashboard group:
 
 ```yaml
 - name: Upload app
@@ -85,6 +86,7 @@ After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upl
     npx --yes testerarmy@latest upload-app \
       --app-path "$APP_PATH" \
       --project "$TESTERARMY_PROJECT_ID" \
+      --remove-after 86400 \
       --output .testerarmy/upload.json
 
     set-output upload_result "$(tr -d '\n' < .testerarmy/upload.json)"
@@ -100,7 +102,42 @@ After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upl
       --output .testerarmy/ci-result.json
 ```
 
-Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints and reuses existing matching iOS and Android builds when possible.
+On pull requests, you can also run the dynamic PR agent against the same uploaded app from a separate job:
+
+```yaml
+run_ios_dynamic_agent:
+  name: Run iOS TesterArmy dynamic agent
+  needs: [upload_ios_app]
+  if: ${{ github.event_name == 'pull_request' }}
+  environment: preview
+  env:
+    APP_ID: ${{ needs.upload_ios_app.outputs.app_id }}
+    COMMIT_SHA: ${{ github.sha }}
+    PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+    PR_TITLE: ${{ github.event.pull_request.title || '' }}
+  steps:
+    - uses: eas/checkout
+
+    - name: Run dynamic PR agent
+      run: |
+        if [ "${TESTERARMY_DYNAMIC_AGENT_ENABLED:-true}" = "false" ]; then
+          echo "TesterArmy dynamic agent is disabled."
+          exit 0
+        fi
+
+        npx --yes testerarmy@latest pr run-dynamic \
+          --project "$TESTERARMY_PROJECT_ID" \
+          --platform ios \
+          --app-id "$APP_ID" \
+          --pr-number "$PR_NUMBER" \
+          --pr-title "$PR_TITLE" \
+          --commit-sha "$COMMIT_SHA" \
+          --output .testerarmy/dynamic-result.json
+```
+
+Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints, reuses existing matching iOS and Android builds when possible, uploads each app once, and runs the dashboard group and dynamic PR agent as separate EAS jobs.
+
+In the full EAS workflow, the dashboard test jobs do not pass `--delete-app-after-run` because the dynamic agent may also need the shared upload on pull requests. The upload step uses `--remove-after 86400`, so TesterArmy removes the app automatically.
 
 ### 3. Trigger the workflow
 
