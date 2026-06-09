@@ -4,6 +4,11 @@
       "ios": {
         "simulator": true
       }
+    },
+    "testerarmy-android-apk": {
+      "android": {
+        "buildType": "apk"
+      }
     }
   }
 }

@@ -7,8 +7,11 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
-  build:
+  build_ios:
     name: Build iOS Simulator app
     runs-on: macos-latest
 
@@ -42,9 +45,66 @@ jobs:
           path: .build/testerarmy.app
           retention-days: 1
 
-  test:
-    name: Run TesterArmy tests
-    needs: build
+  build_android:
+    name: Build Android app
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Set up Java
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Expo prebuild (Android)
+        env:
+          CI: "true"
+        run: npx expo prebuild --platform android --no-install
+
+      - name: Build Android app
+        working-directory: android
+        run: ./gradlew :app:assembleRelease
+
+      - name: Copy APK to artifact path
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK_PATH="$(find android/app/build/outputs/apk/release -type f -name '*.apk' | head -1)"
+          if [[ -z "${APK_PATH:-}" || ! -f "$APK_PATH" ]]; then
+            echo "Could not find a release APK under android/app/build/outputs/apk/release"
+            exit 1
+          fi
+          mkdir -p .build
+          cp "$APK_PATH" .build/testerarmy.apk
+
+      - name: Upload Android app artifact
+        uses: actions/upload-artifact@v5
+        with:
+          name: testerarmy-android-apk
+          path: .build/testerarmy.apk
+          retention-days: 1
+
+  test_ios:
+    name: Run iOS TesterArmy tests
+    needs: build_ios
     runs-on: ubuntu-latest
 
     steps:
@@ -59,15 +119,47 @@ jobs:
 
       - name: Upload app and run TesterArmy tests
         id: mobile
-        uses: tester-army/mobile-github-action@v1.0.1
+        uses: tester-army/mobile-github-action@main
         with:
           app_path: .build/testerarmy.app
+          platform: ios
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
           project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-          webhook_url: ${{ secrets.TESTERARMY_WEBHOOK_URL }}
+          group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
           delete_app_after_run: "true"
-          remove_after: "3600"
+          remove_after: "86400"
 
       - name: Print overall status
         run: |
-          echo "Overall status: ${{ steps.mobile.outputs.overall_status }}"
+          echo "ios overall status: ${{ steps.mobile.outputs.overall_status }}"
+
+  test_android:
+    name: Run Android TesterArmy tests
+    needs: build_android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Download Android app artifact
+        uses: actions/download-artifact@v5
+        with:
+          name: testerarmy-android-apk
+          path: .build
+
+      - name: Upload app and run TesterArmy tests
+        id: mobile
+        uses: tester-army/mobile-github-action@main
+        with:
+          app_path: .build/testerarmy.apk
+          platform: android
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+          group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
+          delete_app_after_run: "true"
+          remove_after: "86400"
+
+      - name: Print overall status
+        run: |
+          echo "android overall status: ${{ steps.mobile.outputs.overall_status }}"
