@@ -135,6 +135,8 @@ run_ios_dynamic_agent:
           --output .testerarmy/dynamic-result.json
 ```
 
+If the dynamic planner determines that a pull request does not change user-observable app behavior, `testerarmy@latest` counts the dynamic run as `skipped`, keeps the summary result passing, and exits successfully. Real run failures and user cancellations still fail the job.
+
 Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints, reuses existing matching iOS and Android builds when possible, uploads each app once, and runs the dashboard group and dynamic PR agent as separate EAS jobs.
 
 In the full EAS workflow, the dashboard test jobs do not pass `--delete-app-after-run` because the dynamic agent may also need the shared upload on pull requests. The upload step uses `--remove-after 86400`, so TesterArmy removes the app automatically.
@@ -211,6 +213,8 @@ dynamic_ios:
         api_key: ${{ secrets.TESTERARMY_API_KEY }}
         project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
 ```
+
+When the dynamic planner skips a pull request, the action job remains successful because it uses `testerarmy@latest`; the CLI output and JSON result include the skipped run count.
 
 For Android, use `app_path: .build/testerarmy.apk` and `platform: android`. The full example workflow uploads each platform once, runs dashboard tests, and only runs `mode: dynamic_agent` jobs on pull requests. The upload step uses `remove_after: "86400"` so TesterArmy removes the shared app automatically.
 
