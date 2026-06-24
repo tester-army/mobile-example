@@ -174,8 +174,7 @@ upload_ios:
     # Download or build .build/testerarmy.app first.
     - name: Upload app
       id: mobile
-      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
-      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      uses: tester-army/mobile-github-action@main
       with:
         mode: upload
         app_path: .build/testerarmy.app
@@ -188,8 +187,7 @@ test_ios:
   runs-on: ubuntu-latest
   steps:
     - name: Run TesterArmy tests
-      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
-      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      uses: tester-army/mobile-github-action@main
       with:
         mode: test
         app_id: ${{ needs.upload_ios.outputs.app_id }}
@@ -204,8 +202,7 @@ dynamic_ios:
   runs-on: ubuntu-latest
   steps:
     - name: Run dynamic PR agent
-      # TODO: Switch back to @main after tester-army/mobile-github-action#4 merges.
-      uses: tester-army/mobile-github-action@36005f70a05f421b1c5e0c9535b651cd1e6ed00b
+      uses: tester-army/mobile-github-action@main
       with:
         mode: dynamic_agent
         app_id: ${{ needs.upload_ios.outputs.app_id }}
