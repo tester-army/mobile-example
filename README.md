@@ -73,10 +73,11 @@ Add these variables to the EAS environment you want to use, for example `preview
 | `TESTERARMY_API_KEY` | API key from Team Settings → API Keys |
 | `TESTERARMY_PROJECT_ID` | Your TesterArmy project ID |
 | `TESTERARMY_GROUP_ID` | TesterArmy dashboard test group ID |
+| `TESTERARMY_DYNAMIC_AGENT_ENABLED` | Optional. Defaults to `true`; set to `false` to skip the dynamic PR agent on pull requests |
 
 ### 2. Use the CLI in your EAS workflow
 
-After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upload it and run your dashboard group:
+For dashboard-only workflows, after building or downloading your `.app` bundle or `.apk` in EAS Workflows, upload it and run your dashboard group:
 
 ```yaml
 - name: Upload app
@@ -85,6 +86,7 @@ After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upl
     npx --yes testerarmy@latest upload-app \
       --app-path "$APP_PATH" \
       --project "$TESTERARMY_PROJECT_ID" \
+      --remove-after 86400 \
       --output .testerarmy/upload.json
 
     set-output upload_result "$(tr -d '\n' < .testerarmy/upload.json)"
@@ -100,7 +102,44 @@ After building or downloading your `.app` bundle or `.apk` in EAS Workflows, upl
       --output .testerarmy/ci-result.json
 ```
 
-Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints and reuses existing matching iOS and Android builds when possible.
+On pull requests, you can also run the dynamic PR agent against the same uploaded app from a separate job:
+
+```yaml
+run_ios_dynamic_agent:
+  name: Run iOS TesterArmy dynamic agent
+  needs: [upload_ios_app]
+  if: ${{ github.event_name == 'pull_request' }}
+  environment: preview
+  env:
+    APP_ID: ${{ needs.upload_ios_app.outputs.app_id }}
+    COMMIT_SHA: ${{ github.sha }}
+    PR_NUMBER: ${{ github.event.pull_request.number || '' }}
+    PR_TITLE: ${{ github.event.pull_request.title || '' }}
+  steps:
+    - uses: eas/checkout
+
+    - name: Run dynamic PR agent
+      run: |
+        if [ "${TESTERARMY_DYNAMIC_AGENT_ENABLED:-true}" = "false" ]; then
+          echo "TesterArmy dynamic agent is disabled."
+          exit 0
+        fi
+
+        npx --yes testerarmy@latest pr run-dynamic \
+          --project "$TESTERARMY_PROJECT_ID" \
+          --platform ios \
+          --app-id "$APP_ID" \
+          --pr-number "$PR_NUMBER" \
+          --pr-title "$PR_TITLE" \
+          --commit-sha "$COMMIT_SHA" \
+          --output .testerarmy/dynamic-result.json
+```
+
+If the dynamic planner determines that a pull request does not change user-observable app behavior, `testerarmy@latest` counts the dynamic run as `skipped`, keeps the summary result passing, and exits successfully. Real run failures and user cancellations still fail the job.
+
+Use `--platform android` for Android app runs. The full example workflow calculates Expo fingerprints, reuses existing matching iOS and Android builds when possible, uploads each app once, and runs the dashboard group and dynamic PR agent as separate EAS jobs.
+
+In the full EAS workflow, the dashboard test jobs do not pass `--delete-app-after-run` because the dynamic agent may also need the shared upload on pull requests. The upload step uses `--remove-after 86400`, so TesterArmy removes the app automatically.
 
 ### 3. Trigger the workflow
 
@@ -112,7 +151,7 @@ The workflow also runs on pull requests and pushes to `main`. You do not need to
 
 ## Running Tests in GitHub Actions
 
-This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action@main`.
+This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulator app and Android app, then run TesterArmy automatically with `tester-army/mobile-github-action`.
 
 ### 1. Add the required GitHub secrets
 
@@ -124,23 +163,57 @@ This repo uses `.github/workflows/test-mobile-app.yml` to build the iOS simulato
 
 ### 2. Use the action in your workflow
 
-After building your `.app` bundle or Android `.apk`, call the shared action with the matching platform:
+After building your `.app` bundle or Android `.apk`, upload it once, then run dashboard tests and the PR-only dynamic agent against the uploaded app ID. The dynamic agent is enabled by adding a separate job with `mode: dynamic_agent`:
 
 ```yaml
-- name: Upload app and run TesterArmy tests
-  id: mobile
-  uses: tester-army/mobile-github-action@main
-  with:
-    app_path: .build/testerarmy.app
-    platform: ios
-    api_key: ${{ secrets.TESTERARMY_API_KEY }}
-    project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
-    group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
-    delete_app_after_run: "true"
-    remove_after: "86400"
+upload_ios:
+  runs-on: ubuntu-latest
+  outputs:
+    app_id: ${{ steps.mobile.outputs.app_id }}
+  steps:
+    # Download or build .build/testerarmy.app first.
+    - name: Upload app
+      id: mobile
+      uses: tester-army/mobile-github-action@main
+      with:
+        mode: upload
+        app_path: .build/testerarmy.app
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+        remove_after: "86400"
+
+test_ios:
+  needs: upload_ios
+  runs-on: ubuntu-latest
+  steps:
+    - name: Run TesterArmy tests
+      uses: tester-army/mobile-github-action@main
+      with:
+        mode: test
+        app_id: ${{ needs.upload_ios.outputs.app_id }}
+        platform: ios
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+        group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
+
+dynamic_ios:
+  needs: upload_ios
+  if: ${{ github.event_name == 'pull_request' }}
+  runs-on: ubuntu-latest
+  steps:
+    - name: Run dynamic PR agent
+      uses: tester-army/mobile-github-action@main
+      with:
+        mode: dynamic_agent
+        app_id: ${{ needs.upload_ios.outputs.app_id }}
+        platform: ios
+        api_key: ${{ secrets.TESTERARMY_API_KEY }}
+        project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
 ```
 
-For Android, pass `app_path: .build/testerarmy.apk` and `platform: android`. The action handles the full mobile flow for you: upload the app, run your test group, wait for the runs to finish, and delete the uploaded app afterward.
+When the dynamic planner skips a pull request, the action job remains successful because it uses `testerarmy@latest`; the CLI output and JSON result include the skipped run count.
+
+For Android, use `app_path: .build/testerarmy.apk` and `platform: android`. The full example workflow uploads each platform once, runs dashboard tests, and only runs `mode: dynamic_agent` jobs on pull requests. The upload step uses `remove_after: "86400"` so TesterArmy removes the shared app automatically.
 
 ### 3. Trigger the workflow
 
@@ -160,7 +233,7 @@ Both work, but specific prompts produce more reliable tests.
 
 ## CI Notes
 
-The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the iOS app on `macos-latest`, builds the Android app on `ubuntu-latest`, passes both artifacts to Linux test jobs, and then runs the shared TesterArmy action for each platform.
+The full example lives in `.github/workflows/test-mobile-app.yml`. It builds the iOS app on `macos-latest`, builds the Android app on `ubuntu-latest`, uploads both artifacts to TesterArmy from Linux jobs, then runs dashboard tests and PR-only dynamic agents against the shared uploads.
 
 See the [CI Integration guide](https://tester.army/docs/mobile/ci-integration) for more details and additional workflow patterns.
 

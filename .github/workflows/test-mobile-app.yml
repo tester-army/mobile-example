@@ -102,10 +102,12 @@ jobs:
           path: .build/testerarmy.apk
           retention-days: 1
 
-  test_ios:
-    name: Run iOS TesterArmy tests
+  upload_ios:
+    name: Upload iOS app to TesterArmy
     needs: build_ios
     runs-on: ubuntu-latest
+    outputs:
+      app_id: ${{ steps.mobile.outputs.app_id }}
 
     steps:
       - name: Check out repository
@@ -117,26 +119,64 @@ jobs:
           name: testerarmy-simulator-app
           path: .build/testerarmy.app
 
-      - name: Upload app and run TesterArmy tests
+      - name: Upload app
         id: mobile
         uses: tester-army/mobile-github-action@main
         with:
+          mode: upload
           app_path: .build/testerarmy.app
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+          remove_after: "86400"
+
+  test_ios:
+    name: Run iOS TesterArmy tests
+    needs: upload_ios
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run TesterArmy tests
+        id: mobile
+        uses: tester-army/mobile-github-action@main
+        with:
+          mode: test
+          app_id: ${{ needs.upload_ios.outputs.app_id }}
           platform: ios
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
           project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
           group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
-          delete_app_after_run: "true"
-          remove_after: "86400"
 
       - name: Print overall status
         run: |
           echo "ios overall status: ${{ steps.mobile.outputs.overall_status }}"
 
-  test_android:
-    name: Run Android TesterArmy tests
+  dynamic_ios:
+    name: Run iOS TesterArmy dynamic agent
+    needs: upload_ios
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run dynamic PR agent
+        id: mobile
+        uses: tester-army/mobile-github-action@main
+        with:
+          mode: dynamic_agent
+          app_id: ${{ needs.upload_ios.outputs.app_id }}
+          platform: ios
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+
+      - name: Print dynamic agent status
+        run: |
+          echo "ios dynamic agent status: ${{ steps.mobile.outputs.dynamic_agent_status }}"
+
+  upload_android:
+    name: Upload Android app to TesterArmy
     needs: build_android
     runs-on: ubuntu-latest
+    outputs:
+      app_id: ${{ steps.mobile.outputs.app_id }}
 
     steps:
       - name: Check out repository
@@ -148,18 +188,54 @@ jobs:
           name: testerarmy-android-apk
           path: .build
 
-      - name: Upload app and run TesterArmy tests
+      - name: Upload app
         id: mobile
         uses: tester-army/mobile-github-action@main
         with:
+          mode: upload
           app_path: .build/testerarmy.apk
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+          remove_after: "86400"
+
+  test_android:
+    name: Run Android TesterArmy tests
+    needs: upload_android
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run TesterArmy tests
+        id: mobile
+        uses: tester-army/mobile-github-action@main
+        with:
+          mode: test
+          app_id: ${{ needs.upload_android.outputs.app_id }}
           platform: android
           api_key: ${{ secrets.TESTERARMY_API_KEY }}
           project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
           group_id: ${{ secrets.TESTERARMY_GROUP_ID }}
-          delete_app_after_run: "true"
-          remove_after: "86400"
 
       - name: Print overall status
         run: |
           echo "android overall status: ${{ steps.mobile.outputs.overall_status }}"
+
+  dynamic_android:
+    name: Run Android TesterArmy dynamic agent
+    needs: upload_android
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Run dynamic PR agent
+        id: mobile
+        uses: tester-army/mobile-github-action@main
+        with:
+          mode: dynamic_agent
+          app_id: ${{ needs.upload_android.outputs.app_id }}
+          platform: android
+          api_key: ${{ secrets.TESTERARMY_API_KEY }}
+          project_id: ${{ secrets.TESTERARMY_PROJECT_ID }}
+
+      - name: Print dynamic agent status
+        run: |
+          echo "android dynamic agent status: ${{ steps.mobile.outputs.dynamic_agent_status }}"
